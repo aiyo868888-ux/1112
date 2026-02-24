@@ -89,6 +89,16 @@ Text: Charcoal #2D2D2D
 **Default model:** Check user customization at `SKILLCUSTOMIZATIONS/Art/PREFERENCES.md`
 **Fallback:** nano-banana-pro (best text rendering)
 
+### Available Models
+
+| Model | Provider | Best For | Features |
+|-------|----------|----------|----------|
+| **modelscope** | ModelScope (Tongyi MAI) | Chinese prompts, culturally accurate content | Excellent Chinese language understanding, async API |
+| **nano-banana-pro** | Google Gemini | High-quality text rendering, reference images | Up to 14 reference images, 1K-4K resolution |
+| **flux** | Replicate | General purpose, fast generation | Multiple aspect ratios, reliable |
+| **nano-banana** | Replicate | Fast generation, good quality | Quick iterations, standard quality |
+| **gpt-image-1** | OpenAI | Portrait orientation, DALL-E 3 | 1024x1024, 1536x1024, 1024x1536 sizes |
+
 ### CRITICAL: Always Output to Downloads First
 
 **ALL generated images MUST go to `~/Downloads/` first for preview and selection.**
@@ -133,6 +143,32 @@ bun run ~/.claude/skills/Art/Tools/Generate.ts \
 ```
 
 **API keys in:** `${PAI_DIR}/.env`
+
+### ModelScope Integration
+
+ModelScope (Tongyi MAI Z-Image Turbo) is now integrated as a first-class model option:
+
+```bash
+# Generate with ModelScope (best for Chinese prompts)
+bun run ~/.claude/skills/Art/Tools/Generate.ts \
+  --model modelscope \
+  --prompt "一只可爱的金色小猫，坐在柔软的垫子上" \
+  --size 16:9 \
+  --output ~/Downloads/chinese-cat.png
+```
+
+**Environment variables required:**
+- `MODELSCOPE_API_KEY` - Get from https://api-inference.modelscope.cn/
+- `REPLICATE_API_TOKEN` - For flux, nano-banana models
+- `GOOGLE_API_KEY` - For nano-banana-pro model
+- `OPENAI_API_KEY` - For gpt-image-1 model
+- `REMOVEBG_API_KEY` - For --remove-bg flag
+
+**ModelScope features:**
+- Excellent Chinese language understanding
+- Async task API (polls for completion)
+- Culturally accurate content generation
+- Standard aspect ratios (1:1, 16:9, 3:2, etc.)
 
 ## Examples
 

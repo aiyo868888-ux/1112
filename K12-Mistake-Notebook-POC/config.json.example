@@ -1,0 +1,19 @@
+{
+  "baidu_ocr": {
+    "api_key": "你的百度云API Key",
+    "secret_key": "你的百度云Secret Key",
+    "note": "请将此文件重命名为config.json并填入你的真实密钥"
+  },
+  "tencent_ocr": {
+    "secret_id": "你的腾讯云SecretId",
+    "secret_key": "你的腾讯云SecretKey",
+    "region": "ap-guangzhou",
+    "note": "腾讯OCR（可选）"
+  },
+  "usage": {
+    "baidu_free_quota": "每月1000次免费调用（个人认证）",
+    "baidu_enterprise_quota": "每月2000次免费调用（企业认证）",
+    "tencent_free_quota": "每月1000次免费调用",
+    "reset_time": "每月1日重置"
+  }
+}

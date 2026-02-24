@@ -1,0 +1,24 @@
+# OCR Dependencies
+paddlepaddle==2.6.0
+paddleocr==2.7.0.3
+Pillow==10.1.0
+numpy==1.24.3
+
+# Formula OCR
+latex-ocr==0.0.5
+pix2tex==0.1.0
+
+# AI/ML
+ollama==0.1.6
+openai==1.12.0
+chromadb==0.4.22
+
+# Web Framework
+fastapi==0.109.0
+uvicorn==0.27.0
+python-multipart==0.0.9
+
+# Utilities
+pydantic==2.5.3
+python-dotenv==1.0.1
+pyyaml==6.0.1

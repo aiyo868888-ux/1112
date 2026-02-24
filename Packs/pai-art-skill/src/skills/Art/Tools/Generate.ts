@@ -57,7 +57,7 @@ async function loadEnv(): Promise<void> {
 // Types
 // ============================================================================
 
-type Model = "flux" | "nano-banana" | "nano-banana-pro" | "gpt-image-1";
+type Model = "flux" | "nano-banana" | "nano-banana-pro" | "gpt-image-1" | "modelscope";
 type ReplicateSize = "1:1" | "16:9" | "3:2" | "2:3" | "3:4" | "4:3" | "4:5" | "5:4" | "9:16" | "21:9";
 type OpenAISize = "1024x1024" | "1536x1024" | "1024x1536";
 type GeminiSize = "1K" | "2K" | "4K";
@@ -138,12 +138,12 @@ USAGE:
   generate --model <model> --prompt "<prompt>" [OPTIONS]
 
 REQUIRED:
-  --model <model>      Model to use: flux, nano-banana, nano-banana-pro, gpt-image-1
+  --model <model>      Model to use: flux, nano-banana, nano-banana-pro, gpt-image-1, modelscope
   --prompt <text>      Image generation prompt (quote if contains spaces)
 
 OPTIONS:
   --size <size>              Image size/aspect ratio (default: 16:9)
-                             Replicate (flux, nano-banana): 1:1, 16:9, 3:2, 2:3, 3:4, 4:3, 4:5, 5:4, 9:16, 21:9
+                             Replicate (flux, nano-banana, modelscope): 1:1, 16:9, 3:2, 2:3, 3:4, 4:3, 4:5, 5:4, 9:16, 21:9
                              OpenAI (gpt-image-1): 1024x1024, 1536x1024, 1024x1536
                              Gemini (nano-banana-pro): 1K, 2K, 4K (resolution); aspect ratio inferred from context or defaults to 16:9
   --aspect-ratio <ratio>     Aspect ratio for Gemini nano-banana-pro (default: 16:9)
@@ -275,8 +275,8 @@ function parseArgs(argv: string[]): CLIArgs {
 
     switch (key) {
       case "model":
-        if (value !== "flux" && value !== "nano-banana" && value !== "nano-banana-pro" && value !== "gpt-image-1") {
-          throw new CLIError(`Invalid model: ${value}. Must be: flux, nano-banana, nano-banana-pro, or gpt-image-1`);
+        if (value !== "flux" && value !== "nano-banana" && value !== "nano-banana-pro" && value !== "gpt-image-1" && value !== "modelscope") {
+          throw new CLIError(`Invalid model: ${value}. Must be: flux, nano-banana, nano-banana-pro, gpt-image-1, or modelscope`);
         }
         parsed.model = value;
         i++; // Skip next arg (value)
@@ -522,6 +522,124 @@ async function generateWithGPTImage(prompt: string, size: OpenAISize, output: st
   console.log(`Image saved to ${output}`);
 }
 
+// ============================================================================
+// ModelScope Image Generation
+// ============================================================================
+
+interface ModelScopeSubmitResponse {
+  task_id: string;
+}
+
+type ModelScopeTaskStatus = "PENDING" | "PROCESSING" | "SUCCEED" | "FAILED";
+
+interface ModelScopeTaskResponse {
+  task_status: ModelScopeTaskStatus;
+  output_images?: string[];
+  error?: string;
+}
+
+/**
+ * Generate image using ModelScope API (Tongyi MAI Z-Image Turbo)
+ * Uses async task submission and polling pattern
+ */
+async function generateWithModelScope(prompt: string, output: string): Promise<void> {
+  const apiKey = process.env.MODELSCOPE_API_KEY;
+  if (!apiKey) {
+    throw new CLIError("Missing environment variable: MODELSCOPE_API_KEY");
+  }
+
+  const BASE_URL = 'https://api-inference.modelscope.cn/';
+  const MODEL = 'Tongyi-MAI/Z-Image-Turbo';
+
+  console.log(`Generating with ModelScope (${MODEL})...`);
+
+  // Submit generation task
+  console.log("Submitting generation task...");
+  const submitResponse = await fetch(`${BASE_URL}v1/images/generations`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'X-ModelScope-Async-Mode': 'true',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      prompt,
+    }),
+  });
+
+  if (!submitResponse.ok) {
+    const errorText = await submitResponse.text();
+    throw new CLIError(`Failed to submit ModelScope task: ${submitResponse.status} - ${errorText}`);
+  }
+
+  const submitData: ModelScopeSubmitResponse = await submitResponse.json();
+  const taskId = submitData.task_id;
+
+  if (!taskId) {
+    throw new CLIError('No task_id returned from ModelScope API');
+  }
+
+  console.log(`Task submitted: ${taskId}`);
+  console.log("Polling task status...");
+
+  // Poll for completion (max 5 minutes default)
+  const maxAttempts = 60; // 60 attempts * 5 seconds = 5 minutes
+  const pollInterval = 5000; // 5 seconds
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const statusResponse = await fetch(`${BASE_URL}v1/tasks/${taskId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'X-ModelScope-Task-Type': 'image_generation',
+      },
+    });
+
+    if (!statusResponse.ok) {
+      const errorText = await statusResponse.text();
+      throw new CLIError(`Failed to check ModelScope task status: ${statusResponse.status} - ${errorText}`);
+    }
+
+    const statusData: ModelScopeTaskResponse = await statusResponse.json();
+    const status = statusData.task_status;
+
+    console.log(`  Status: ${status} (${attempt + 1}/${maxAttempts})`);
+
+    if (status === "SUCCEED") {
+      if (!statusData.output_images || statusData.output_images.length === 0) {
+        throw new CLIError('ModelScope task succeeded but no images returned');
+      }
+
+      console.log(`✓ Generation complete! Downloading image...`);
+
+      // Download first image
+      const imageUrl = statusData.output_images[0];
+      const imageResponse = await fetch(imageUrl);
+
+      if (!imageResponse.ok) {
+        throw new CLIError(`Failed to download image from ModelScope: ${imageResponse.status}`);
+      }
+
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      await writeFile(output, imageBuffer);
+      console.log(`Image saved to ${output}`);
+      return;
+    }
+
+    if (status === "FAILED") {
+      const error = statusData.error || 'Unknown error';
+      throw new CLIError(`ModelScope image generation failed: ${error}`);
+    }
+
+    // Still pending or processing, wait before next poll
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  throw new CLIError('Timeout waiting for ModelScope image generation (5 minutes)');
+}
+
 async function generateWithNanoBananaPro(
   prompt: string,
   size: GeminiSize,
@@ -667,6 +785,8 @@ async function main(): Promise<void> {
           );
         } else if (args.model === "gpt-image-1") {
           promises.push(generateWithGPTImage(finalPrompt, args.size as OpenAISize, varOutput));
+        } else if (args.model === "modelscope") {
+          promises.push(generateWithModelScope(finalPrompt, varOutput));
         }
       }
 
@@ -690,6 +810,8 @@ async function main(): Promise<void> {
       );
     } else if (args.model === "gpt-image-1") {
       await generateWithGPTImage(finalPrompt, args.size as OpenAISize, args.output);
+    } else if (args.model === "modelscope") {
+      await generateWithModelScope(finalPrompt, args.output);
     }
 
     // Remove background if requested
